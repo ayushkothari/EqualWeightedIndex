@@ -1,9 +1,9 @@
 import duckdb
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Tuple
+from concurrent.futures import ThreadPoolExecutor, Future, as_completed
 from datetime import datetime, timedelta
 from constants import CREATE_SCHEMA_SQL, INSERT_COMPANY_DATA_SQL, INSERT_MARKET_DATA_SQL, SP500_TICKERS, DB_PATH
 
@@ -16,38 +16,12 @@ handler.setFormatter(logging.Formatter('%(message)s'))  # Only show raw messages
 logger.addHandler(handler)
 
 
-def calculate_adjusted_shares(shares_outstanding: float, splits: pd.Series, hist_index: pd.DatetimeIndex) -> pd.Series:
-    """Adjusts shares outstanding based on stock split history."""
-    if splits.empty:
-        return pd.Series(shares_outstanding, index=hist_index)
-
-    # Sort splits in ascending order to process them correctly
-    splits_ascending = splits.sort_index(ascending=True)
-    split_dates = splits_ascending.index
-    split_ratios = splits_ascending.values
-
-    # Reverse the split ratios and compute cumulative product in reverse order
-    reverse_ratios = split_ratios[::-1]
-    cumprod_reverse = np.cumprod(reverse_ratios)[::-1]
-    split_products = pd.Series(cumprod_reverse, index=split_dates)
-
-    # Find the applicable split adjustment for each historical date
-    hist_dates_np = hist_index.to_numpy()
-    split_dates_np = split_dates.to_numpy()
-    indices = np.searchsorted(split_dates_np, hist_dates_np, side='right')
-
-    product = [split_products.iloc[indices[i]] if indices[i] < len(split_dates_np) else 1
-               for i in range(len(hist_dates_np))]
-
-    return shares_outstanding / np.array(product)
-
-
-def fetch_ticker_data(ticker: str, start_date: datetime, end_date: datetime) -> tuple:
+def fetch_ticker_data(ticker: str, start_date: datetime, end_date: datetime) -> Tuple[str, str, pd.Series, pd.Series]:
     """Fetches historical market data and calculates market capitalization."""
     try:
         stock = yf.Ticker(ticker)
         # Retrieve historical closing prices
-        hist = stock.history(start=start_date, end=end_date, interval="1d")["Close"]
+        hist = stock.history(start=start_date, end=end_date, interval="1d")['Close']
         shares_outstanding = stock.info.get("sharesOutstanding", None)
         company_name = stock.info.get("longName", ticker)
 
@@ -56,10 +30,7 @@ def fetch_ticker_data(ticker: str, start_date: datetime, end_date: datetime) -> 
             logger.error(f"MISSING DATA ERROR: No shares outstanding data for {ticker}")
             return ticker, company_name, pd.Series(dtype='float64'), pd.Series(dtype='float64')
 
-        # Adjust shares for stock splits
-        splits = stock.splits
-        adjusted_shares = calculate_adjusted_shares(shares_outstanding, splits, hist.index)
-        market_caps = (hist * adjusted_shares).astype("int64")
+        market_caps = (hist * shares_outstanding).astype("int64")
 
         return ticker, company_name, hist, market_caps
     except Exception as e:
@@ -67,7 +38,7 @@ def fetch_ticker_data(ticker: str, start_date: datetime, end_date: datetime) -> 
         return ticker, ticker, pd.Series(dtype='float64'), pd.Series(dtype='float64')
 
 
-def create_database_schema(conn):
+def create_database_schema(conn: duckdb.DuckDBPyConnection) -> None:
     """Creates the necessary database schema in DuckDB."""
     try:
         conn.execute(CREATE_SCHEMA_SQL)
@@ -76,7 +47,7 @@ def create_database_schema(conn):
         logger.error(f"SCHEMA CREATION ERROR: {str(e)}")
 
 
-def insert_company_data(conn, ticker: str, company_name: str):
+def insert_company_data(conn: duckdb.DuckDBPyConnection, ticker: str, company_name: str) -> None:
     """Inserts company data into the companies table, ignoring duplicates."""
     try:
         conn.execute(INSERT_COMPANY_DATA_SQL, [ticker, company_name])
@@ -84,7 +55,7 @@ def insert_company_data(conn, ticker: str, company_name: str):
         logger.error(f"DB INSERT ERROR: Company data for {ticker} - {str(e)}")
 
 
-def insert_market_data(conn, df: pd.DataFrame):
+def insert_market_data(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> None:
     """Inserts market data into the market_data table using a temporary DataFrame."""
     try:
         conn.register('temp_df', df)
@@ -93,7 +64,7 @@ def insert_market_data(conn, df: pd.DataFrame):
         logger.error(f"DB INSERT ERROR: Market data - {str(e)}")
 
 
-def main(start_date=None, end_date=datetime.today()):
+def main(start_date: datetime = None, end_date: datetime = datetime.today()) -> None:
     """Main function that initializes the database, fetches data, and stores it."""
     conn = duckdb.connect(DB_PATH)
     # conn = duckdb.connect(':memory:')  # In memory
@@ -103,8 +74,8 @@ def main(start_date=None, end_date=datetime.today()):
     try:
         create_database_schema(conn)
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(fetch_ticker_data, t, start_date, end_date)
-                       for t in SP500_TICKERS]
+            futures: list[Future] = [executor.submit(fetch_ticker_data, t, start_date, end_date)
+                                     for t in SP500_TICKERS]
 
             for future in as_completed(futures):
                 ticker, company_name, hist, market_caps = future.result()

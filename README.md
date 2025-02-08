@@ -6,6 +6,7 @@ This project is designed to run a sequence of operations involving data fetching
 
 ### Assumption
 Assume that all stocks that historically fell within the top 100 by market cap are also part of the S&P 500 today.
+Using Outstanding shares as total shares data was not available
 
 ### Run the Script
 

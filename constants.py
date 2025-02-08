@@ -29,7 +29,7 @@ INSERT_MARKET_DATA_SQL = """
 DB_PATH = r"market_cap_data.duckdb"  # Update path
 OUTPUT_PATH = r""  # Update output directory
 
-NO_OF_COMPANIES=100
+NO_OF_COMPANIES=10
 
 SP500_TICKERS=['AOS', 'ABT', 'ABBV', 'ACN', 'ADBE', 'AMD', 'AES', 'AFL', 'A', 'APD',
  'ABNB', 'AKAM', 'ALB', 'ARE', 'ALGN', 'ALLE', 'LNT', 'ALL', 'GOOGL', 'GOOG',

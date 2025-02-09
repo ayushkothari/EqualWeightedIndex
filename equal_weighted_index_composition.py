@@ -86,11 +86,17 @@ def track_composition_changes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_index_performance(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate index returns and cumulative performance"""
-    df['Stock_Return'] = df.groupby('Ticker')['Price'].pct_change()
-    index_df = df.groupby('Date').apply(
-        lambda x: (x['Stock_Return'] * x['Weight']).sum()
-    ).reset_index(name='Daily_Return')
+    # Compute the weighted sum of MarketCap per day
+    index_df = df.groupby('Date').apply(lambda x: (x['MarketCap'] * x['Weight']).sum()).reset_index()
+
+    # Rename the computed column
+    index_df.rename(columns={0: 'Index_Value'}, inplace=True)
+
+    # Scale down the index value
+    index_df['Index_Value'] = index_df['Index_Value'] / 1e12
+
+    # Compute Daily Return
+    index_df['Daily_Return'] = index_df['Index_Value'].pct_change()
 
     index_df['Cumulative_Value'] = (1 + index_df['Daily_Return']).cumprod()
 

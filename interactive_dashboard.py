@@ -228,10 +228,9 @@ def update_summary_metrics(selected_date):
     cumulative_value = daily_data['Cumulative_Value'].iloc[0] if not daily_data.empty else 0
     daily_return = daily_data['Daily_Return'].iloc[0] if not daily_data.empty else 0
     num_changes = len(changes_df)
-    selected_date_str = selected_date.strftime('%Y-%m-%d')
     
     metrics = [
-        ("Cumulative Return", f"{cumulative_value:.2f}"),
+        ("Cumulative Value", f"{cumulative_value:.2f}"),
         ("Daily Change", f"{daily_return*100:.2f}%"),
         ("Total Changes", str(num_changes))
     ]
